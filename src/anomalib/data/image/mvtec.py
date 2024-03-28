@@ -30,6 +30,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from pandas import DataFrame
+import pandas as pd
 from torchvision.transforms.v2 import Transform
 
 from anomalib import TaskType
@@ -412,3 +413,236 @@ class MVTec(AnomalibDataModule):
             logger.info("Found the dataset.")
         else:
             download_and_extract(self.root, DOWNLOAD_INFO)
+
+
+
+
+#############################################################################################3
+            
+def make_mvtec_dataset_contaminated(
+    root: str | Path,
+    split: str | Split | None = None,
+    extensions: Sequence[str] | None = None,
+    cont_ratio: float=0.0,
+    run: int=1
+) -> DataFrame:   
+
+    ## Original dataset
+    samples_original = make_mvtec_dataset(root, split=None, extensions=extensions)
+    samples_original_train = samples_original[(samples_original["split"]=="train")]
+    samples_original_test_normal = samples_original[(samples_original["split"]=="test") & (samples_original["label_index"]==LabelName.NORMAL)]
+    samples_original_test_abnormal = samples_original[(samples_original["split"]=="test") & (samples_original["label_index"]==LabelName.ABNORMAL)]
+    n_original_train = samples_original_train.shape[0]
+
+ #   print("--------------------")
+ #   print(samples_original.shape[0]) #397
+ #   print(samples_original_train.shape[0]) #280
+ #   print(samples_original_test_normal.shape[0]) #28
+ #   print(samples_original_test_abnormal.shape[0]) # 89
+ #   print(n_original_train) #280
+ #   print("--------------------")
+
+
+#    ####################
+#
+#    ## Contaminated dataset
+#    # create test sets
+#    contamination_ratio_max = 0.1
+#    n_swap = int(contamination_ratio_max*n_original_train)
+#    samples_contaminated_swap = samples_original_test_abnormal.sample(n=n_swap, axis=0, replace=False, random_state=run)
+#    
+#    samples_contaminated_test_normal = samples_original_test_normal
+#    samples_contaminated_test_abnormal = samples_original_test_abnormal.drop(samples_contaminated_swap.index)
+#    samples_contaminated_test = pd.concat([samples_contaminated_test_normal, samples_contaminated_test_abnormal], axis=0, ignore_index=True)
+#
+#    print("--------------------")
+#    print(n_swap) #28
+#    print(samples_contaminated_swap.shape[0]) #28
+#    print(samples_contaminated_test_normal.shape[0]) #28
+#    print(samples_contaminated_test_abnormal.shape[0]) #61
+#    print(samples_contaminated_test.shape[0])  # 89
+#    print("--------------------")
+#
+#    # create contaminated training sets
+#    contamination_ratio = cont_ratio
+#    n_contamination = int(contamination_ratio/contamination_ratio_max * n_swap)
+#    
+#    samples_contaminated_train_normal = samples_original_train.sample(n=(n_original_train-n_contamination), axis=0, replace=False, random_state=run)
+#    samples_contaminated_train_abnormal = samples_contaminated_swap.iloc[0:n_contamination,:]
+#    samples_contaminated_train = pd.concat([samples_contaminated_train_normal, samples_contaminated_train_abnormal], axis=0, ignore_index=True)
+#
+#    print("--------------------")
+#    print(contamination_ratio) #0.1
+#    print(n_contamination) #28
+#    print(samples_contaminated_train_normal.shape[0]) #252
+#    print(samples_contaminated_train_abnormal.shape[0]) #28
+#    print(samples_contaminated_train.shape[0]) #280
+#    print("--------------------")
+#
+#    ####################
+
+
+
+    ####################
+    ## Contaminated dataset
+    # create test sets
+    contamination_ratio_max = 0.1
+    n_swap = int(n_original_train/(1.0-contamination_ratio_max) - n_original_train)
+    samples_contaminated_swap = samples_original_test_abnormal.sample(n=n_swap, axis=0, replace=False, random_state=run)
+
+    samples_contaminated_test_normal = samples_original_test_normal
+    samples_contaminated_test_abnormal = samples_original_test_abnormal.drop(samples_contaminated_swap.index)
+    samples_contaminated_test = pd.concat([samples_contaminated_test_normal, samples_contaminated_test_abnormal], axis=0, ignore_index=True)
+
+#   print("--------------------")
+#   print(n_swap) #31
+#   print(samples_contaminated_swap.shape[0]) #31
+#   print(samples_contaminated_test_normal.shape[0]) #28
+#   print(samples_contaminated_test_abnormal.shape[0]) #58
+#   print(samples_contaminated_test.shape[0])  # 86
+#   print("--------------------")
+
+    # create contaminated training sets
+    contamination_ratio = cont_ratio
+    n_contamination = int(contamination_ratio/contamination_ratio_max * n_swap)
+
+    samples_contaminated_train_normal = samples_original_train
+    samples_contaminated_train_abnormal = samples_contaminated_swap.iloc[0:n_contamination,:] 
+    samples_contaminated_train = pd.concat([samples_contaminated_train_normal, samples_contaminated_train_abnormal], axis=0, ignore_index=True)
+
+
+#    print("--------------------")
+#    print(contamination_ratio) #0.1
+#    print(n_contamination) #31
+#    print(samples_contaminated_train_normal.shape[0]) #280
+#    print(samples_contaminated_train_abnormal.shape[0]) #31
+#    print(samples_contaminated_train.shape[0])  # 311
+#    print("--------------------")
+    ####################
+
+
+
+
+    # Return required samples
+    if split==None:
+        samples = pd.concat([samples_contaminated_train, samples_contaminated_test], axis=0, ignore_index=True)
+    elif split=="train":
+        samples = samples_contaminated_train
+    elif split=="test":
+        samples = samples_contaminated_test
+    else:
+        samples= samples.head(0)
+
+ #   print("--------------------")
+ #   print(samples.shape[0])  # 311 / 86 # 280 / 89
+ #   print("--------------------")
+
+
+    return samples
+
+
+class MVTecDataset_contaminated(MVTecDataset):
+
+    def __init__(
+        self,
+        task: TaskType,
+        root: Path | str = "./datasets/MVTec",
+        category: str = "bottle",
+        transform: Transform | None = None,
+        split: str | Split | None = None,
+        cont_ratio: float=0.0,
+        run: int=1
+    ) -> None:
+        super().__init__(task=task, 
+                         root=root, 
+                         category=category, 
+                         transform=transform, 
+                         split=split)
+        
+        self.cont_ratio = cont_ratio
+        self.run = run
+
+        self.samples = make_mvtec_dataset_contaminated(self.root_category, 
+                                                       split=self.split, 
+                                                       extensions=IMG_EXTENSIONS, 
+                                                       cont_ratio=self.cont_ratio, 
+                                                       run=self.run)
+
+
+
+class MVTec_contaminated(MVTec):
+   
+    def __init__(
+        self,
+        root: Path | str = "./datasets/MVTec",
+        category: str = "bottle",
+        train_batch_size: int = 32,
+        eval_batch_size: int = 32,
+        num_workers: int = 8,
+        task: TaskType | str = TaskType.SEGMENTATION,
+        image_size: tuple[int, int] | None = None,
+        transform: Transform | None = None,
+        train_transform: Transform | None = None,
+        eval_transform: Transform | None = None,
+        test_split_mode: TestSplitMode | str = TestSplitMode.FROM_DIR,
+        test_split_ratio: float = 0.2,
+        val_split_mode: ValSplitMode | str = ValSplitMode.SAME_AS_TEST,
+        val_split_ratio: float = 0.5,
+        seed: int | None = None,
+        cont_ratio: float=0.0,
+        cont_ratio_max: float=0.0,
+        run: int=1
+    ) -> None:
+        super().__init__(
+            train_batch_size=train_batch_size,
+            eval_batch_size=eval_batch_size,
+            image_size=image_size,
+            transform=transform,
+            train_transform=train_transform,
+            eval_transform=eval_transform,
+            num_workers=num_workers,
+            test_split_mode=test_split_mode,
+            test_split_ratio=test_split_ratio,
+            val_split_mode=val_split_mode,
+            val_split_ratio=val_split_ratio,
+            seed=seed,
+            task=task,
+            root=root,
+            category=category            
+        )
+
+        self.cont_ratio = cont_ratio
+        self.cont_ratio_max = cont_ratio_max
+        self.run = run
+
+    def _setup(self, _stage: str | None = None) -> None:
+        """Set up the datasets and perform dynamic subset splitting.
+
+        This method may be overridden in subclass for custom splitting behaviour.
+
+        Note:
+            The stage argument is not used here. This is because, for a given instance of an AnomalibDataModule
+            subclass, all three subsets are created at the first call of setup(). This is to accommodate the subset
+            splitting behaviour of anomaly tasks, where the validation set is usually extracted from the test set, and
+            the test set must therefore be created as early as the `fit` stage.
+
+        """
+        self.train_data = MVTecDataset_contaminated(
+            task=self.task,
+            transform=self.train_transform,
+            split=Split.TRAIN,
+            root=self.root,
+            category=self.category,
+            cont_ratio=self.cont_ratio,
+            run=self.run            
+        )
+        self.test_data = MVTecDataset_contaminated(
+            task=self.task,
+            transform=self.eval_transform,
+            split=Split.TEST,
+            root=self.root,
+            category=self.category,
+            cont_ratio=self.cont_ratio,
+            run=self.run   
+        )
+
