@@ -486,7 +486,7 @@ def make_mvtec_dataset_contaminated(
     ####################
     ## Contaminated dataset
     # create test sets
-    contamination_ratio_max = 0.1
+    contamination_ratio_max = 0.15#0.1
     n_swap = int(n_original_train/(1.0-contamination_ratio_max) - n_original_train)
     samples_contaminated_swap = samples_original_test_abnormal.sample(n=n_swap, axis=0, replace=False, random_state=run)
 
