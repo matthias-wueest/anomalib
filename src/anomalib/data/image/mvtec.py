@@ -31,6 +31,7 @@ from pathlib import Path
 
 from pandas import DataFrame
 import pandas as pd
+import numpy as np
 from torchvision.transforms.v2 import Transform
 
 from anomalib import TaskType
@@ -76,6 +77,14 @@ CATEGORIES = (
     "zipper",
 )
 
+### 16.04.2024
+_EXPECTED_COLUMNS_CLASSIFICATION = ["image_path", "split"]
+_EXPECTED_COLUMNS_SEGMENTATION = [*_EXPECTED_COLUMNS_CLASSIFICATION, "mask_path"]
+_EXPECTED_COLUMNS_PERTASK = {
+    "classification": _EXPECTED_COLUMNS_CLASSIFICATION,
+    "segmentation": _EXPECTED_COLUMNS_SEGMENTATION,
+    "detection": _EXPECTED_COLUMNS_SEGMENTATION,
+}
 
 def make_mvtec_dataset(
     root: str | Path,
@@ -424,7 +433,8 @@ def make_mvtec_dataset_contaminated(
     split: str | Split | None = None,
     extensions: Sequence[str] | None = None,
     cont_ratio: float=0.0,
-    run: int=1
+    run: int=1, 
+    idx: list=[]
 ) -> DataFrame:   
 
     ## Original dataset
@@ -484,6 +494,8 @@ def make_mvtec_dataset_contaminated(
 
 
     ####################
+
+
     ## Contaminated dataset
     # create test sets
     contamination_ratio_max = 0.15#0.1
@@ -493,7 +505,8 @@ def make_mvtec_dataset_contaminated(
     samples_contaminated_test_normal = samples_original_test_normal
     samples_contaminated_test_abnormal = samples_original_test_abnormal.drop(samples_contaminated_swap.index)
     samples_contaminated_test = pd.concat([samples_contaminated_test_normal, samples_contaminated_test_abnormal], axis=0, ignore_index=True)
-
+    samples_contaminated_test_abnormal_bool = np.concatenate((np.full((samples_contaminated_test_normal.shape[0],1), False), 
+                                                               np.full((samples_contaminated_test_abnormal.shape[0],1), True)), axis=0)
 #   print("--------------------")
 #   print(n_swap) #31
 #   print(samples_contaminated_swap.shape[0]) #31
@@ -509,6 +522,9 @@ def make_mvtec_dataset_contaminated(
     samples_contaminated_train_normal = samples_original_train
     samples_contaminated_train_abnormal = samples_contaminated_swap.iloc[0:n_contamination,:] 
     samples_contaminated_train = pd.concat([samples_contaminated_train_normal, samples_contaminated_train_abnormal], axis=0, ignore_index=True)
+    samples_contaminated_train_abnormal_bool = np.concatenate((np.full((samples_contaminated_train_normal.shape[0],1), False), 
+                                                               np.full((samples_contaminated_train_abnormal.shape[0],1), True)), axis=0)
+
 
 
 #    print("--------------------")
@@ -521,24 +537,48 @@ def make_mvtec_dataset_contaminated(
     ####################
 
 
-
-
     # Return required samples
     if split==None:
-        samples = pd.concat([samples_contaminated_train, samples_contaminated_test], axis=0, ignore_index=True)
+        raise ValueError("Error: Split type not implemented.")
+        #samples = pd.concat([samples_contaminated_train, samples_contaminated_test], axis=0, ignore_index=True)
+        #samples_abnormal_bool = pd.concat([samples_contaminated_train_abnormal_bool, samples_contaminated_test_abnormal_bool], axis=0, ignore_index=True)
+        #samples_abnormal_bool = np.concatenate((samples_contaminated_train_abnormal_bool, samples_contaminated_test_abnormal_bool), axis=0)
     elif split=="train":
-        samples = samples_contaminated_train
+        if len(idx) == 0:
+            #print("Here!")
+            samples = samples_contaminated_train
+            samples_abnormal_bool = samples_contaminated_train_abnormal_bool
+            
+        if len(idx) != 0:
+            samples = samples_contaminated_train.iloc[idx,:]
+            samples_abnormal_bool = samples_contaminated_train_abnormal_bool[idx,:]
+
+    elif split=="train_unselected":
+        if len(idx) == 0:
+            samples = samples_contaminated_train.head(0)
+            samples_abnormal_bool = np.empty((0,0), dtype=bool)
+
+        if len(idx) != 0:
+            samples = samples_contaminated_train.iloc[~samples_contaminated_train.index.isin(idx)]
+            samples_abnormal_bool = samples_contaminated_train_abnormal_bool[~np.isin(np.arange(samples_contaminated_train_abnormal_bool.shape[0]), idx), :]
+        
     elif split=="test":
         samples = samples_contaminated_test
+        samples_abnormal_bool = samples_contaminated_test_abnormal_bool
+        #unselected_samples = samples_contaminated_train.head(0)
+        #unselected_samples_abnormal_bool = np.empty((1,1), dtype=bool)
     else:
-        samples= samples.head(0)
+        raise ValueError("Error: Split type not implemented.")
 
  #   print("--------------------")
  #   print(samples.shape[0])  # 311 / 86 # 280 / 89
  #   print("--------------------")
 
-
-    return samples
+    # 09.04.2024
+    samples = samples.reset_index(drop=True)
+    #print(samples.shape)
+    #print(samples)
+    return samples, samples_abnormal_bool
 
 
 class MVTecDataset_contaminated(MVTecDataset):
@@ -551,7 +591,8 @@ class MVTecDataset_contaminated(MVTecDataset):
         transform: Transform | None = None,
         split: str | Split | None = None,
         cont_ratio: float=0.0,
-        run: int=1
+        run: int=1, 
+        idx: list=[]
     ) -> None:
         super().__init__(task=task, 
                          root=root, 
@@ -561,12 +602,81 @@ class MVTecDataset_contaminated(MVTecDataset):
         
         self.cont_ratio = cont_ratio
         self.run = run
+        self.idx = idx
 
-        self.samples = make_mvtec_dataset_contaminated(self.root_category, 
+    #    self.samples = make_mvtec_dataset_contaminated(self.root_category, 
+    #                                                   split=self.split, 
+    #                                                   extensions=IMG_EXTENSIONS, 
+    #                                                   cont_ratio=self.cont_ratio, 
+    #                                                   run=self.run, 
+    #                                                   idx=self.idx)
+        
+    #    self.samples, self.samples_abnormal_bool = make_mvtec_dataset_contaminated(self.root_category, 
+    #                                                   split=self.split, 
+    #                                                   extensions=IMG_EXTENSIONS, 
+    #                                                   cont_ratio=self.cont_ratio, 
+    #                                                   run=self.run, 
+    #                                                   idx=self.idx)
+
+    #    self.samples, self.samples_abnormal_bool, self.unselected_samples, self.unselected_samples_abnormal_bool = make_mvtec_dataset_contaminated(
+    #                                                   self.root_category, 
+    #                                                   split=self.split, 
+    #                                                   extensions=IMG_EXTENSIONS, 
+    #                                                   cont_ratio=self.cont_ratio, 
+    #                                                   run=self.run, 
+    #                                                   idx=self.idx)
+    #    print("--------------------------")
+    #    print(self.samples)
+    #    print("--------------------------")
+    #    print(self.root_category)
+    #    print(self.split)
+    #    print(IMG_EXTENSIONS)
+    #    print(self.cont_ratio)
+    #    print(self.run)
+    #    print(self.idx)
+    #    print("--------------------------")
+        self.samples, self.samples_abnormal_bool = make_mvtec_dataset_contaminated(
+                                                       self.root_category, 
                                                        split=self.split, 
                                                        extensions=IMG_EXTENSIONS, 
                                                        cont_ratio=self.cont_ratio, 
-                                                       run=self.run)
+                                                       run=self.run, 
+                                                       idx=self.idx)
+
+    #### 16.04.2024
+    @property
+    def samples(self) -> DataFrame:
+        """Get the samples dataframe."""
+        if self._samples is None:
+            msg = (
+                "Dataset does not have a samples dataframe. Ensure that a dataframe has been assigned to "
+                "`dataset.samples`."
+            )
+            raise RuntimeError(msg)
+        return self._samples
+
+    @samples.setter
+    def samples(self, samples: DataFrame) -> None:
+        """Overwrite the samples with a new dataframe.
+
+        Args:
+            samples (DataFrame): DataFrame with new samples.
+        """
+        # validate the passed samples by checking the
+        if not isinstance(samples, DataFrame):
+            msg = f"samples must be a pandas.DataFrame, found {type(samples)}"
+            raise TypeError(msg)
+
+        expected_columns = _EXPECTED_COLUMNS_PERTASK[self.task]
+        if not all(col in samples.columns for col in expected_columns):
+            msg = f"samples must have (at least) columns {expected_columns}, found {samples.columns}"
+            raise ValueError(msg)
+
+        if not samples["image_path"].apply(lambda p: Path(p).exists()).all():
+            msg = "missing file path(s) in samples"
+            raise FileNotFoundError(msg)
+
+        self._samples = samples#.sort_values(by="image_path", ignore_index=True)    
 
 
 
@@ -591,7 +701,9 @@ class MVTec_contaminated(MVTec):
         seed: int | None = None,
         cont_ratio: float=0.0,
         cont_ratio_max: float=0.0,
-        run: int=1
+        run: int=1, 
+        idx: list=[]
+        
     ) -> None:
         super().__init__(
             train_batch_size=train_batch_size,
@@ -614,6 +726,7 @@ class MVTec_contaminated(MVTec):
         self.cont_ratio = cont_ratio
         self.cont_ratio_max = cont_ratio_max
         self.run = run
+        self.idx = idx
 
     def _setup(self, _stage: str | None = None) -> None:
         """Set up the datasets and perform dynamic subset splitting.
@@ -627,6 +740,17 @@ class MVTec_contaminated(MVTec):
             the test set must therefore be created as early as the `fit` stage.
 
         """
+#        self.train_data = MVTecDataset_contaminated(
+#            task=self.task,
+#            transform=self.train_transform,
+#            split=Split.TRAIN,
+#            root=self.root,
+#            category=self.category,
+#            cont_ratio=self.cont_ratio,
+#            run=self.run,
+#            idx = self.idx            
+#        )
+
         self.train_data = MVTecDataset_contaminated(
             task=self.task,
             transform=self.train_transform,
@@ -634,8 +758,21 @@ class MVTec_contaminated(MVTec):
             root=self.root,
             category=self.category,
             cont_ratio=self.cont_ratio,
-            run=self.run            
+            run=self.run,
+            idx = self.idx            
         )
+
+        self.train_data_unselected = MVTecDataset_contaminated(
+            task=self.task,
+            transform=self.train_transform,
+            split=Split.TRAIN_UNSELECTED,
+            root=self.root,
+            category=self.category,
+            cont_ratio=self.cont_ratio,
+            run=self.run,
+            idx = self.idx            
+        )
+
         self.test_data = MVTecDataset_contaminated(
             task=self.task,
             transform=self.eval_transform,
@@ -646,3 +783,12 @@ class MVTec_contaminated(MVTec):
             run=self.run   
         )
 
+    ### 09.04.2024
+    def get_train_dataset(self):
+            return self.train_data
+
+    def get_train_dataset_unselected(self):
+            return self.train_data_unselected
+
+    def get_test_dataset(self):
+            return self.test_data

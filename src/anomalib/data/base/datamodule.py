@@ -241,9 +241,13 @@ class AnomalibDataModule(LightningDataModule, ABC):
             collate_fn=collate_fn,
         )
 
-    def predict_dataloader(self) -> EVAL_DATALOADERS:
-        """Use the test dataloader for inference unless overridden."""
-        return self.test_dataloader()
+#    ### 02.04.2024
+#    def set_train_data(self, new_train_data):
+#        self.train_data = new_train_data
+
+#    ### 01.04.2024
+#    def get_train_dataset(self):
+#            return self.train_data
 
     @property
     def transform(self) -> Transform:

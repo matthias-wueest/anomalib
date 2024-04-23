@@ -30,6 +30,7 @@ class Split(str, Enum):
     """Split of a subset."""
 
     TRAIN = "train"
+    TRAIN_UNSELECTED = "train_unselected"
     VAL = "val"
     TEST = "test"
 
