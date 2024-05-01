@@ -59,7 +59,8 @@ for idx_category, category in enumerate(category_arr):
         #k_ls = [1]
         k_ls = [1, 2, 3, 5, 10]
         #k_ls = [1, 2, 3, 5, 10, 20, 40]
-        gamma = 1-cont_ratio
+        #gamma = 1-cont_ratio
+        gamma = 1-2*cont_ratio
 
         ## Lists to save results
         results_test_blind_ls=[]
